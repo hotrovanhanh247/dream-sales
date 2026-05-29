@@ -36,17 +36,18 @@ async function main() {
   const rulesetName = rsBody.name;
   console.log('Created ruleset:', rulesetName);
 
-  // 2. Point the cloud.firestore release at it (create, else update)
-  let relRes = await fetch(`${BASE}/releases`, {
-    method: 'POST',
+  // 2. Point the cloud.firestore release at it. The release already exists
+  //    (locked default), so UPDATE it; fall back to CREATE if it's missing.
+  let relRes = await fetch(`${BASE}/releases/cloud.firestore`, {
+    method: 'PATCH',
     headers,
-    body: JSON.stringify({ name: RELEASE, rulesetName }),
+    body: JSON.stringify({ release: { name: RELEASE, rulesetName } }),
   });
-  if (relRes.status === 409) {
-    relRes = await fetch(`${BASE}/releases/cloud.firestore`, {
-      method: 'PATCH',
+  if (relRes.status === 404) {
+    relRes = await fetch(`${BASE}/releases`, {
+      method: 'POST',
       headers,
-      body: JSON.stringify({ release: { name: RELEASE, rulesetName } }),
+      body: JSON.stringify({ name: RELEASE, rulesetName }),
     });
   }
   const relBody = await relRes.json();
