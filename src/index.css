@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+.dark {
+  --color-slate-50:  #0f172a;
+  --color-slate-100: #1e293b;
+  --color-slate-200: #334155;
+  --color-slate-300: #475569;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #cbd5e1;
+  --color-slate-600: #e2e8f0;
+  --color-slate-700: #f1f5f9;
+  --color-slate-800: #f8fafc;
+  --color-slate-900: #ffffff;
+
+  --color-indigo-50:  #1e1b4b;
+  --color-violet-50:  #2e1065;
+  --color-purple-50:  #2e1065;
+  --color-amber-50:   #451a03;
+  --color-yellow-50:  #422006;
+  --color-emerald-50: #022c22;
+  --color-green-50:   #052e16;
+  --color-teal-50:    #042f2e;
+  --color-rose-50:    #4c0519;
+  --color-red-50:     #450a0a;
+  --color-pink-50:    #500724;
+  --color-fuchsia-50: #4a044e;
+  --color-sky-50:     #082f49;
+  --color-blue-50:    #172554;
+  --color-cyan-50:    #083344;
+  --color-orange-50:  #431407;
+  --color-lime-50:    #1a2e05;
+}
+
+.dark .bg-white { background-color: #1a202c; }
+.dark .hover\:bg-white:hover { background-color: #1a202c; }
+.dark .border-white { border-color: #1a202c; }
+
+html.dark,
+html.dark body {
+  background-color: #0a0f1e;
+  color: #e2e8f0;
+}
