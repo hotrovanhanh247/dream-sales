@@ -1,0 +1,239 @@
+// Dream Sales — lean CTV payout schema ported from CCB Mart.
+// Scope: hierarchy + 5 ranks + 3 payout engines (commission, management fee, breakaway).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         String // ctv, admin
+  name         String
+  phone        String?
+  rank         String? // CTV, PP, TP, GDV, GDKD
+  parentId     Int?     @map("parent_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  isBusinessHousehold Boolean @default(false) @map("is_business_household")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  parent   User?  @relation("UserHierarchy", fields: [parentId], references: [id])
+  children User[] @relation("UserHierarchy")
+
+  transactions       Transaction[]    @relation("CtvTransactions")
+  customers          Customer[]       @relation("CtvCustomers")
+  rankHistory        RankHistory[]
+  mgmtFeesFrom       ManagementFee[]  @relation("MgmtFeeFrom")
+  mgmtFeesTo         ManagementFee[]  @relation("MgmtFeeTo")
+  breakawayLog       BreakawayLog?    @relation("BreakawayUser")
+  breakawayOldParent BreakawayLog[]   @relation("BreakawayOldParent")
+  breakawayNewParent BreakawayLog[]   @relation("BreakawayNewParent")
+  breakawayFeesFrom  BreakawayFee[]   @relation("BreakFeeFrom")
+  breakawayFeesTo    BreakawayFee[]   @relation("BreakFeeTo")
+  trainerLogs        TrainingLog[]    @relation("TrainerLogs")
+  traineeLogs        TrainingLog[]    @relation("TraineeLogs")
+  trainerContracts   B2BContract[]    @relation("Trainer")
+  traineeContracts   B2BContract[]    @relation("Trainee")
+  businessHousehold  BusinessHousehold?
+
+  @@index([parentId])
+  @@index([rank])
+  @@index([role])
+  @@index([role, isActive])
+  @@map("users")
+}
+
+model CommissionConfig {
+  id           Int     @id @default(autoincrement())
+  tier         String  @unique
+  selfSalePct  Decimal @map("self_sale_pct") @db.Decimal(5, 4)
+  directPct    Decimal @map("direct_pct") @db.Decimal(5, 4)
+  indirect2Pct Decimal @map("indirect2_pct") @db.Decimal(5, 4)
+  indirect3Pct Decimal @map("indirect3_pct") @db.Decimal(5, 4)
+  fixedSalary  Decimal @map("fixed_salary") @db.Decimal(15, 0)
+
+  @@map("commission_config")
+}
+
+// Kept so the ported commission service (getAgencyCommissionRates) stays verbatim.
+model AgencyCommissionConfig {
+  id            Int     @id @default(autoincrement())
+  group         String  @unique
+  commissionPct Decimal @map("commission_pct") @db.Decimal(5, 4)
+  bonusPct      Decimal @map("bonus_pct") @db.Decimal(5, 4)
+
+  @@map("agency_commission_config")
+}
+
+model Customer {
+  id         Int      @id @default(autoincrement())
+  name       String
+  phone      String?  @unique
+  ctvId      Int?     @map("ctv_id")
+  totalSpent Decimal  @default(0) @map("total_spent") @db.Decimal(15, 0)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  ctv          User?         @relation("CtvCustomers", fields: [ctvId], references: [id])
+  transactions Transaction[]
+
+  @@index([ctvId])
+  @@map("customers")
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  customerId  Int?     @map("customer_id")
+  ctvId       Int?     @map("ctv_id")
+  channel     String // ctv
+  totalAmount Decimal  @map("total_amount") @db.Decimal(15, 0)
+  status      String   @default("CONFIRMED") // PENDING, CONFIRMED, REJECTED
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+  ctv      User?     @relation("CtvTransactions", fields: [ctvId], references: [id])
+
+  @@index([ctvId])
+  @@index([channel])
+  @@index([status])
+  @@index([ctvId, status])
+  @@index([ctvId, createdAt])
+  @@index([channel, createdAt])
+  @@map("transactions")
+}
+
+model RankHistory {
+  id          Int      @id @default(autoincrement())
+  ctvId       Int      @map("ctv_id")
+  oldRank     String   @map("old_rank")
+  newRank     String   @map("new_rank")
+  reason      String
+  changedAt   DateTime @default(now()) @map("changed_at")
+  changedBy   String   @map("changed_by")
+  changedById Int?     @map("changed_by_id")
+
+  ctv User @relation(fields: [ctvId], references: [id])
+
+  @@map("rank_history")
+}
+
+// ---- Payout engine: management fees (F1/F2/F3) ----
+
+model ManagementFee {
+  id         Int      @id @default(autoincrement())
+  fromUserId Int      @map("from_user_id")
+  toUserId   Int      @map("to_user_id")
+  level      Int
+  amount     Decimal  @db.Decimal(15, 0)
+  month      String
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  fromUser User @relation("MgmtFeeFrom", fields: [fromUserId], references: [id])
+  toUser   User @relation("MgmtFeeTo", fields: [toUserId], references: [id])
+
+  @@index([toUserId, month])
+  @@index([fromUserId, month])
+  @@map("management_fees")
+}
+
+// ---- Payout engine: breakaway (thoát ly) ----
+
+model BreakawayLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @unique @map("user_id")
+  oldParentId Int      @map("old_parent_id")
+  newParentId Int      @map("new_parent_id")
+  breakawayAt DateTime @default(now()) @map("breakaway_at")
+  expireAt    DateTime @map("expire_at")
+  status      String   @default("ACTIVE")
+
+  user          User           @relation("BreakawayUser", fields: [userId], references: [id])
+  oldParent     User           @relation("BreakawayOldParent", fields: [oldParentId], references: [id])
+  newParent     User           @relation("BreakawayNewParent", fields: [newParentId], references: [id])
+  breakawayFees BreakawayFee[]
+
+  @@index([status, expireAt])
+  @@index([oldParentId])
+  @@index([newParentId])
+  @@index([status])
+  @@map("breakaway_logs")
+}
+
+model BreakawayFee {
+  id             Int       @id @default(autoincrement())
+  breakawayLogId Int       @map("breakaway_log_id")
+  fromUserId     Int       @map("from_user_id")
+  toUserId       Int       @map("to_user_id")
+  level          Int
+  amount         Decimal   @db.Decimal(15, 0)
+  month          String
+  status         String    @default("PENDING")
+  paidAt         DateTime? @map("paid_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  breakawayLog BreakawayLog @relation(fields: [breakawayLogId], references: [id])
+  fromUser     User         @relation("BreakFeeFrom", fields: [fromUserId], references: [id])
+  toUser       User         @relation("BreakFeeTo", fields: [toUserId], references: [id])
+
+  @@index([toUserId, month])
+  @@index([breakawayLogId, month])
+  @@map("breakaway_fees")
+}
+
+// ---- Supporting models (training gate + HKD for breakaway) ----
+
+model TrainingLog {
+  id              Int       @id @default(autoincrement())
+  trainerId       Int       @map("trainer_id")
+  traineeId       Int       @map("trainee_id")
+  sessionDate     DateTime  @map("session_date")
+  durationMinutes Int       @map("duration_minutes")
+  content         String
+  status          String    @default("PENDING") // PENDING, VERIFIED, REJECTED
+  verifiedBy      Int?      @map("verified_by")
+  verifiedAt      DateTime? @map("verified_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  trainer User @relation("TrainerLogs", fields: [trainerId], references: [id])
+  trainee User @relation("TraineeLogs", fields: [traineeId], references: [id])
+
+  @@index([trainerId])
+  @@index([traineeId])
+  @@map("training_logs")
+}
+
+model BusinessHousehold {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique @map("user_id")
+  businessName String   @map("business_name")
+  status       String   @default("active")
+  registeredAt DateTime @default(now()) @map("registered_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("business_households")
+}
+
+model B2BContract {
+  id                Int       @id @default(autoincrement())
+  contractNo        String    @unique @map("contract_no")
+  trainerId         Int       @map("trainer_id")
+  traineeId         Int       @map("trainee_id")
+  signedAt          DateTime  @default(now()) @map("signed_at")
+  expiredAt         DateTime? @map("expired_at")
+  status            String    @default("active")
+  terminatedAt      DateTime? @map("terminated_at")
+  terminationReason String?   @map("termination_reason")
+
+  trainer User @relation("Trainer", fields: [trainerId], references: [id])
+  trainee User @relation("Trainee", fields: [traineeId], references: [id])
+
+  @@map("b2b_contracts")
+}
