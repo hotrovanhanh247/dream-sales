@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, Network, Wallet, Calculator, Users, Percent,
-  Coins, LogOut, TrendingUp,
+  Coins, LogOut, TrendingUp, BookOpen,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { RANK_LABELS } from '@/lib/api';
@@ -14,6 +14,7 @@ const CTV_MENU = [
   { href: '/tree', label: 'Sơ đồ nhóm', icon: Network },
   { href: '/fees', label: 'Phí quản lý & thoát ly', icon: Wallet },
   { href: '/calculator', label: 'Tính hoa hồng (Dream Sales)', icon: Calculator },
+  { href: '/guide', label: 'Hướng dẫn sử dụng', icon: BookOpen },
 ];
 
 const ADMIN_MENU = [
@@ -22,6 +23,7 @@ const ADMIN_MENU = [
   { href: '/admin/commission', label: 'Cấu hình hoa hồng', icon: Percent },
   { href: '/admin/payouts', label: 'Chi trả (phí QL & thoát ly)', icon: Coins },
   { href: '/calculator', label: 'Tính hoa hồng (Dream Sales)', icon: Calculator },
+  { href: '/guide', label: 'Hướng dẫn sử dụng', icon: BookOpen },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
