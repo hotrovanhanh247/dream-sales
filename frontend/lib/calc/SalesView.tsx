@@ -1,7 +1,6 @@
 'use client';
 import { motion } from 'motion/react';
 import { Calendar, Plus, Trash2, Users, TrendingUp, PieChart as PieChartIcon } from 'lucide-react';
-import type { User } from 'firebase/auth';
 import type { SalesMonth, SalesSubordinate, SalesFixedCost, SalesServiceCost, SalesServiceCostType } from './types';
 import { Card, CommitInput, cn, fmtVND, formatNumberDisplay } from '../ui';
 import {
@@ -19,7 +18,7 @@ import { OrgRosterEditor } from './OrgRosterEditor';
 import { OrgTree } from './OrgTree';
 import { useSales } from './useSales';
 
-export function SalesView({ user }: { user: User }) {
+export function SalesView({ accountId }: { accountId: string }) {
   const {
     salesMonths,
     salesMembers,
@@ -37,7 +36,7 @@ export function SalesView({ user }: { user: User }) {
     upsertSalesMonth,
     addSalesMember,
     deleteSalesMember,
-  } = useSales(user);
+  } = useSales(accountId);
 
   return (
     <motion.div

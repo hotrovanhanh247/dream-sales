@@ -4,8 +4,8 @@
   "description": "Dream Sales — CTV payout backend (ported lean from CCB Mart)",
   "main": "src/server.js",
   "scripts": {
-    "dev": "node src/server.js",
-    "start": "node src/server.js",
+    "dev": "node --max-old-space-size=1024 src/server.js",
+    "start": "node --max-old-space-size=1024 src/server.js",
     "build": "prisma generate",
     "postinstall": "prisma generate",
     "migrate": "prisma migrate deploy",

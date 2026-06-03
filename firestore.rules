@@ -1,21 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isAdmin() {
-      return request.auth != null &&
-        request.auth.token.email_verified == true &&
-        request.auth.token.email in [
-          "hotrovanhanh247@gmail.com",
-          "willy.nguyenqm@gmail.com"
-        ];
+    // Calculator data ("Tính hoa hồng") — open to ANY signed-in Google user,
+    // but each account can only read/write its OWN data, scoped under its uid.
+    match /users/{uid}/salesMonths/{monthId} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
-    match /salesMonths/{monthId} {
-      allow read, write: if isAdmin();
-    }
-
-    match /salesMembers/{memberId} {
-      allow read, write: if isAdmin();
+    match /users/{uid}/salesMembers/{memberId} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
     match /userPrefs/{uid} {

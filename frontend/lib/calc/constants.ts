@@ -53,10 +53,18 @@ export function salesMonthLabel(yearMonth: string): string {
   return `${m}/${y.slice(2)}`;
 }
 
-export function countSubtree(parentId: string, members: SalesMember[]): number {
+export function countSubtree(
+  parentId: string,
+  members: SalesMember[],
+  visited: Set<string> = new Set()
+): number {
+  // Guard against cyclic parentId data (A→B→A) which would otherwise recurse
+  // infinitely and exhaust memory/stack.
+  if (visited.has(parentId)) return 0;
+  visited.add(parentId);
   let total = 0;
   for (const c of members.filter(x => x.parentId === parentId)) {
-    total += (c.count || 1) + countSubtree(c.id, members);
+    total += (c.count || 1) + countSubtree(c.id, members, visited);
   }
   return total;
 }

@@ -1,15 +1,5 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import {
-  collection,
-  onSnapshot,
-  addDoc,
-  updateDoc,
-  doc,
-  deleteDoc,
-} from 'firebase/firestore';
-import type { User } from 'firebase/auth';
-import { db } from './firebase';
 import type { SalesMonth, SalesMember } from './types';
 import {
   SALES_POSITIONS,
@@ -19,29 +9,51 @@ import {
   type SalesPositionKey,
 } from './constants';
 
-export function useSales(user: User | null) {
+const STORE_PREFIX = 'dreamSalesCalc:v1';
+const genId = (): string =>
+  (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+/**
+ * Calculator state, scoped to the currently signed-in APP account (no Google
+ * login). Data is persisted in the browser's localStorage, keyed per account,
+ * so each logged-in user keeps their own scenarios on this device.
+ */
+export function useSales(accountId: string | null) {
   const [salesMonths, setSalesMonths] = useState<SalesMonth[]>([]);
   const [salesMembers, setSalesMembers] = useState<SalesMember[]>([]);
   const [salesActivePosition, setSalesActivePosition] = useState<SalesPositionKey>('gdkd');
   const [salesActiveMonth, setSalesActiveMonth] = useState<string>(() => salesMonthKeys()[0]);
 
+  const monthsKey = accountId ? `${STORE_PREFIX}:${accountId}:salesMonths` : null;
+  const membersKey = accountId ? `${STORE_PREFIX}:${accountId}:salesMembers` : null;
+
+  // Load this account's data from localStorage whenever the account changes.
   useEffect(() => {
-    if (!user) {
+    if (!monthsKey || !membersKey) {
       setSalesMonths([]);
       setSalesMembers([]);
       return;
     }
-    const unsubSales = onSnapshot(collection(db, 'salesMonths'), (snapshot) => {
-      setSalesMonths(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SalesMonth)));
-    });
-    const unsubSalesMembers = onSnapshot(collection(db, 'salesMembers'), (snapshot) => {
-      setSalesMembers(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SalesMember)));
-    });
-    return () => {
-      unsubSales();
-      unsubSalesMembers();
-    };
-  }, [user]);
+    try {
+      const raw = localStorage.getItem(monthsKey);
+      setSalesMonths(raw ? (JSON.parse(raw) as SalesMonth[]) : []);
+    } catch { setSalesMonths([]); }
+    try {
+      const raw = localStorage.getItem(membersKey);
+      setSalesMembers(raw ? (JSON.parse(raw) as SalesMember[]) : []);
+    } catch { setSalesMembers([]); }
+  }, [monthsKey, membersKey]);
+
+  const saveMonths = (next: SalesMonth[]) => {
+    setSalesMonths(next);
+    try { if (monthsKey) localStorage.setItem(monthsKey, JSON.stringify(next)); } catch { /* quota / private mode */ }
+  };
+  const saveMembers = (next: SalesMember[]) => {
+    setSalesMembers(next);
+    try { if (membersKey) localStorage.setItem(membersKey, JSON.stringify(next)); } catch { /* quota / private mode */ }
+  };
 
   const salesKey = (ym: string, pos: SalesPositionKey) => `${ym}|${pos}`;
   const salesByKey = useMemo(() => {
@@ -152,58 +164,49 @@ export function useSales(user: User | null) {
   };
 
   const upsertSalesMonth = async (yearMonth: string, patch: Partial<SalesMonth>) => {
-    try {
-      const existing = salesByKey[salesKey(yearMonth, salesActivePosition)];
-      if (existing) {
-        await updateDoc(doc(db, 'salesMonths', existing.id), patch as Record<string, any>);
-      } else {
-        const base: Omit<SalesMonth, 'id'> = {
-          yearMonth,
-          position: salesActivePosition,
-          hasBaseSalary: true,
-          retailRevenueA: 0,
-          retailRevenueB: 0,
-          subordinates: [],
-          serviceCosts: [],
-          fixedCosts: [],
-        };
-        await addDoc(collection(db, 'salesMonths'), { ...base, ...patch });
-      }
-    } catch (error) {
-      console.error('Error saving sales month:', error);
-      alert('Lưu sales tháng thất bại.');
+    if (!accountId) return;
+    const existing = salesByKey[salesKey(yearMonth, salesActivePosition)];
+    if (existing) {
+      saveMonths(salesMonths.map(m => (m.id === existing.id ? { ...m, ...patch } : m)));
+    } else {
+      const base: Omit<SalesMonth, 'id'> = {
+        yearMonth,
+        position: salesActivePosition,
+        hasBaseSalary: true,
+        retailRevenueA: 0,
+        retailRevenueB: 0,
+        subordinates: [],
+        serviceCosts: [],
+        fixedCosts: [],
+      };
+      const created = { ...base, ...patch, id: genId() } as SalesMonth;
+      saveMonths([...salesMonths, created]);
     }
   };
 
   const addSalesMember = async (member: Omit<SalesMember, 'id'>) => {
-    try {
-      const payload: Record<string, unknown> = {
-        position: member.position,
-        count: member.count,
-        createdAt: Date.now(),
-      };
-      if (member.name) payload.name = member.name;
-      if (member.parentId) payload.parentId = member.parentId;
-      await addDoc(collection(db, 'salesMembers'), payload);
-    } catch (error) {
-      console.error('Add sales member failed:', error);
-      alert('Thêm thành viên thất bại.');
-    }
+    if (!accountId) return;
+    const created: SalesMember = {
+      id: genId(),
+      position: member.position,
+      count: member.count,
+      createdAt: Date.now(),
+      ...(member.name ? { name: member.name } : {}),
+      ...(member.parentId ? { parentId: member.parentId } : {}),
+    } as SalesMember;
+    saveMembers([...salesMembers, created]);
   };
 
   const deleteSalesMember = async (id: string) => {
-    try {
-      const toDelete: string[] = [];
-      const collect = (rootId: string) => {
-        toDelete.push(rootId);
-        salesMembers.filter(x => x.parentId === rootId).forEach(c => collect(c.id));
-      };
-      collect(id);
-      await Promise.all(toDelete.map(d => deleteDoc(doc(db, 'salesMembers', d))));
-    } catch (error) {
-      console.error('Delete sales member failed:', error);
-      alert('Xoá thành viên thất bại.');
-    }
+    if (!accountId) return;
+    const toDelete = new Set<string>();
+    const collect = (rootId: string) => {
+      if (toDelete.has(rootId)) return; // guard against cyclic parentId data
+      toDelete.add(rootId);
+      salesMembers.filter(x => x.parentId === rootId).forEach(c => collect(c.id));
+    };
+    collect(id);
+    saveMembers(salesMembers.filter(m => !toDelete.has(m.id)));
   };
 
   return {

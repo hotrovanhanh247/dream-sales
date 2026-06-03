@@ -17,14 +17,21 @@ function OrgLeafChip({ m }: { m: SalesMember; key?: React.Key }) {
   );
 }
 
-function OrgNode({ m, members, collapsed, onToggle }: {
+function OrgNode({ m, members, collapsed, onToggle, ancestors }: {
   m: SalesMember;
   members: SalesMember[];
   collapsed: Set<string>;
   onToggle: (id: string) => void;
+  ancestors?: Set<string>;
   key?: React.Key;
 }) {
-  const children = members.filter(c => c.parentId === m.id).sort(compareMembers);
+  // Guard against cyclic parentId data (A→B→A). Without this, a cycle makes
+  // OrgNode render itself forever → infinite recursion → out-of-memory freeze.
+  const ancestorIds = ancestors ?? new Set<string>();
+  const childAncestors = new Set(ancestorIds).add(m.id);
+  const children = members
+    .filter(c => c.parentId === m.id && !ancestorIds.has(c.id))
+    .sort(compareMembers);
   const p = SALES_POSITIONS[m.position];
   const label = m.name || `${p.short} ×${m.count}`;
   const hasChildren = children.length > 0;
@@ -59,7 +66,7 @@ function OrgNode({ m, members, collapsed, onToggle }: {
         <div className="pl-4 border-l-2 border-slate-200 ml-2 mt-2 space-y-2">
           {branches.length > 0 && (
             <ul className="space-y-2">
-              {branches.map(c => <OrgNode key={c.id} m={c} members={members} collapsed={collapsed} onToggle={onToggle} />)}
+              {branches.map(c => <OrgNode key={c.id} m={c} members={members} collapsed={collapsed} onToggle={onToggle} ancestors={childAncestors} />)}
             </ul>
           )}
           {leaves.length > 0 && (
